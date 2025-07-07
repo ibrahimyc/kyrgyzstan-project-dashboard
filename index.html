@@ -273,5 +273,424 @@
             <span id="successMessage">İşlem başarılı</span>
         </div>
     </div>
+    <!-- Supabase Configuration -->
+    <script>
+        // Supabase Configuration
+        const SUPABASE_URL = 'https://uxhxcnxvntmoisomsgax.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV4aHhjbnh2bnRtb2lzb21zZ2F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE4OTUzNzMsImV4cCI6MjA2NzQ3MTM3M30._3gLOhPkBRMitSwEQ7qT582lDg8IgytRwUd_K401xAk';
+        console.log('✅ Supabase config yüklendi');
+    </script>
+    
+    <!-- Supabase Client -->
+    <script>
+        // Supabase client'ı başlat
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // API Fonksiyonları
+        class TaskAPI {
+            // Tüm görevleri getir
+            static async getAllTasks() {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('tasks')
+                        .select('*')
+                        .order('created_at', { ascending: false });
+                    
+                    if (error) throw error;
+                    return data || [];
+                } catch (error) {
+                    console.error('Görevler alınırken hata:', error);
+                    return [];
+                }
+            }
+
+            // Yeni görev ekle
+            static async createTask(taskData) {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('tasks')
+                        .insert([{
+                            title: taskData.title,
+                            description: taskData.description,
+                            category: taskData.category,
+                            time_phase: taskData.timePhase,
+                            status: taskData.status,
+                            responsible: taskData.responsible,
+                            created_by: taskData.createdBy,
+                            start_date: taskData.startDate,
+                            end_date: taskData.endDate,
+                            duration: taskData.duration,
+                            progress: taskData.progress
+                        }])
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+                    return data;
+                } catch (error) {
+                    console.error('Görev oluşturulurken hata:', error);
+                    throw error;
+                }
+            }
+
+            // Görev durumu güncelle
+            static async updateTaskStatus(taskId, newStatus) {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('tasks')
+                        .update({ status: newStatus })
+                        .eq('id', taskId)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+                    return data;
+                } catch (error) {
+                    console.error('Görev durumu güncellenirken hata:', error);
+                    throw error;
+                }
+            }
+
+            // Görev zaman dilimi güncelle
+            static async updateTaskTimePhase(taskId, newTimePhase) {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('tasks')
+                        .update({ time_phase: newTimePhase })
+                        .eq('id', taskId)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+                    return data;
+                } catch (error) {
+                    console.error('Görev zaman dilimi güncellenirken hata:', error);
+                    throw error;
+                }
+            }
+        }
+
+        console.log('📄 TaskAPI yüklendi');
+    </script>
+
+    <!-- Main Application Script -->
+    <script>
+        // Global state
+        let tasks = [];
+        let filteredTasks = [];
+        let currentView = 'dashboard';
+        let searchTerm = '';
+        let filters = {
+            status: 'all',
+            category: 'all',
+            responsible: 'all',
+            timePhase: 'all'
+        };
+        let editingTask = null;
+
+        // Sabitler
+        const categories = {
+            sourcing: { name: 'KAYNAK BULMA', color: '#8b44ad', icon: '🎯' },
+            hiring: { name: 'İŞE ALIM', color: '#8b44ad', icon: '👥' },
+            placement_legal: { name: 'YERLEŞTİRME VE HUKUK', color: '#8b44ad', icon: '⚖️' }
+        };
+
+        const timePhases = {
+            '30_days': { name: '30 Gün', color: '#d8b7db' },
+            '60_days': { name: '60 Gün', color: '#b488b7' },
+            '90_days': { name: '90 Gün', color: '#9058a0' },
+            'end_of_year': { name: 'Yıl Sonu', color: '#8b44ad' }
+        };
+
+        const statusConfig = {
+            done: { name: 'Tamamlandı', color: 'text-green-600', bgColor: 'bg-green-100 text-green-800' },
+            ongoing: { name: 'Devam Ediyor', color: 'text-yellow-600', bgColor: 'bg-yellow-100 text-yellow-800' },
+            pending: { name: 'Beklemede', color: 'text-gray-600', bgColor: 'bg-gray-100 text-gray-800' }
+        };
+
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
+        });
+
+        async function initializeApp() {
+            try {
+                console.log('🚀 Uygulama başlatılıyor...');
+                
+                // Icons'ları yükle
+                if (typeof lucide !== 'undefined') {
+                    lucide.createIcons();
+                }
+                
+                // Event listener'ları başlat
+                initializeEventListeners();
+                
+                // Verileri yükle
+                await loadTasks();
+                
+                // Loading overlay'ı gizle
+                hideLoading();
+                
+                console.log('✅ Uygulama başarıyla başlatıldı');
+            } catch (error) {
+                console.error('❌ Uygulama başlatma hatası:', error);
+                hideLoading();
+            }
+        }
+
+        async function loadTasks() {
+            try {
+                showLoading();
+                console.log('📊 Görevler yükleniyor...');
+                
+                tasks = await TaskAPI.getAllTasks();
+                console.log('✅ Görevler yüklendi:', tasks.length, 'görev');
+                
+                // Supabase'den gelen verileri uygun formata çevir
+                tasks = tasks.map(task => ({
+                    id: task.id,
+                    title: task.title,
+                    description: task.description || '',
+                    category: task.category,
+                    timePhase: task.time_phase,
+                    status: task.status,
+                    responsible: task.responsible || '',
+                    createdBy: task.created_by || '',
+                    startDate: task.start_date || '',
+                    endDate: task.end_date || '',
+                    duration: task.duration || 0,
+                    progress: task.progress || 0
+                }));
+                
+                updateFilteredTasks();
+                updateResponsibleFilter();
+                renderContent();
+            } catch (error) {
+                console.error('❌ Görevler yüklenirken hata:', error);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function initializeEventListeners() {
+            console.log('🎯 Event listener\'lar başlatılıyor...');
+            
+            // Navigation
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    currentView = e.currentTarget.dataset.view;
+                    updateNavigation();
+                    renderContent();
+                });
+            });
+
+            // Add Task Button
+            const addTaskBtn = document.getElementById('addTaskBtn');
+            if (addTaskBtn) {
+                addTaskBtn.addEventListener('click', () => {
+                    openTaskModal();
+                });
+            }
+
+            // Modal events
+            const closeModalBtn = document.getElementById('closeModalBtn');
+            if (closeModalBtn) {
+                closeModalBtn.addEventListener('click', () => {
+                    closeTaskModal();
+                });
+            }
+
+            const cancelTaskBtn = document.getElementById('cancelTaskBtn');
+            if (cancelTaskBtn) {
+                cancelTaskBtn.addEventListener('click', () => {
+                    closeTaskModal();
+                });
+            }
+        }
+
+        // Utility functions
+        function showLoading() {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) {
+                loadingOverlay.classList.remove('hidden');
+            }
+        }
+
+        function hideLoading() {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            if (loadingOverlay) {
+                loadingOverlay.classList.add('hidden');
+            }
+        }
+
+        function updateFilteredTasks() {
+            filteredTasks = tasks.filter(task => {
+                const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    task.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                    task.responsible.toLowerCase().includes(searchTerm.toLowerCase());
+                
+                const matchesStatus = filters.status === 'all' || task.status === filters.status;
+                const matchesCategory = filters.category === 'all' || task.category === filters.category;
+                const matchesResponsible = filters.responsible === 'all' || task.responsible.includes(filters.responsible);
+                const matchesTimePhase = filters.timePhase === 'all' || task.timePhase === filters.timePhase;
+
+                return matchesSearch && matchesStatus && matchesCategory && matchesResponsible && matchesTimePhase;
+            });
+        }
+
+        function updateNavigation() {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if (btn.dataset.view === currentView) {
+                    btn.className = 'nav-btn flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-purple-100 text-purple-700';
+                } else {
+                    btn.className = 'nav-btn flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-100';
+                }
+            });
+        }
+
+        function updateResponsibleFilter() {
+            const responsibleFilter = document.getElementById('responsibleFilter');
+            if (!responsibleFilter) return;
+            
+            const uniqueResponsibles = [...new Set(tasks.flatMap(task => 
+                task.responsible.split(', ').map(r => r.trim()).filter(r => r)
+            ))].sort();
+
+            const currentValue = responsibleFilter.value;
+            responsibleFilter.innerHTML = '<option value="all">Tüm Sorumlu Kişiler</option>';
+            uniqueResponsibles.forEach(person => {
+                const option = document.createElement('option');
+                option.value = person;
+                option.textContent = person;
+                responsibleFilter.appendChild(option);
+            });
+            responsibleFilter.value = currentValue;
+        }
+
+        function renderContent() {
+            const mainContent = document.getElementById('mainContent');
+            if (!mainContent) return;
+            
+            switch(currentView) {
+                case 'dashboard':
+                    mainContent.innerHTML = renderDashboardView();
+                    break;
+                default:
+                    mainContent.innerHTML = '<div class="bg-white rounded-lg p-8 text-center"><h3 class="text-lg font-semibold text-gray-900">Bu görünüm henüz hazırlanıyor...</h3></div>';
+            }
+            
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        function renderDashboardView() {
+            const progress = calculateProgress();
+            
+            return `
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="bg-purple-50 border border-purple-200 p-6 rounded-lg shadow-lg">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-purple-100">
+                                <i data-lucide="bar-chart-3" class="h-6 w-6 text-purple-600"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-purple-600">Toplam Görev</p>
+                                <p class="text-2xl font-semibold text-purple-900">${filteredTasks.length}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-purple-50 border border-purple-200 p-6 rounded-lg shadow-lg">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-green-100">
+                                <i data-lucide="check-circle" class="h-6 w-6 text-green-600"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-purple-600">Tamamlanan</p>
+                                <p class="text-2xl font-semibold text-purple-900">${filteredTasks.filter(task => task.status === 'done').length}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-purple-50 border border-purple-200 p-6 rounded-lg shadow-lg">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-yellow-100">
+                                <i data-lucide="alert-circle" class="h-6 w-6 text-yellow-600"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-purple-600">Devam Eden</p>
+                                <p class="text-2xl font-semibold text-purple-900">${filteredTasks.filter(task => task.status === 'ongoing').length}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-purple-50 border border-purple-200 p-6 rounded-lg shadow-lg">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-gray-100">
+                                <i data-lucide="clock" class="h-6 w-6 text-gray-600"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-purple-600">Bekleyen</p>
+                                <p class="text-2xl font-semibold text-purple-900">${filteredTasks.filter(task => task.status === 'pending').length}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activities -->
+                <div class="bg-purple-50 border border-purple-200 p-6 rounded-lg shadow-lg">
+                    <h3 class="text-lg font-semibold mb-4 text-purple-900">Son Aktiviteler</h3>
+                    <div class="space-y-3">
+                        ${filteredTasks
+                            .slice(0, 5)
+                            .map(task => `
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-2 h-2 rounded-full ${task.status === 'done' ? 'bg-green-500' : task.status === 'ongoing' ? 'bg-yellow-500' : 'bg-gray-500'}"></div>
+                                    <span class="text-sm text-purple-800 font-medium">${task.title}</span>
+                                    <span class="text-xs text-purple-600">- ${task.responsible}</span>
+                                </div>
+                            `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function calculateProgress() {
+            const totalTasks = tasks.length;
+            const doneTasks = tasks.filter(task => task.status === 'done').length;
+            const ongoingTasks = tasks.filter(task => task.status === 'ongoing').length;
+            const pendingTasks = tasks.filter(task => task.status === 'pending').length;
+
+            return {
+                total: totalTasks,
+                done: doneTasks,
+                ongoing: ongoingTasks,
+                pending: pendingTasks,
+                donePercentage: totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0,
+                ongoingPercentage: totalTasks > 0 ? (ongoingTasks / totalTasks) * 100 : 0
+            };
+        }
+
+        // Modal functions
+        function openTaskModal(task = null) {
+            const modal = document.getElementById('taskModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+            }
+        }
+
+        function closeTaskModal() {
+            const modal = document.getElementById('taskModal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+        }
+
+        console.log('📄 app.js yüklendi');
+    </script>
+</body>
+</html>
 </body>
 </html>
