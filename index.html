@@ -160,7 +160,7 @@
         </div>
     </div>
 
-    <!-- Task Modal (Aynı kalıyor, sadece id'ler değişiyor) -->
+    <!-- Task Modal -->
     <div id="taskModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div class="flex items-center justify-between mb-4">
@@ -273,6 +273,7 @@
             <span id="successMessage">İşlem başarılı</span>
         </div>
     </div>
+
     <!-- Supabase Configuration -->
     <script>
         // Supabase Configuration
@@ -333,6 +334,36 @@
                 }
             }
 
+            // Görev güncelle
+            static async updateTask(taskId, taskData) {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('tasks')
+                        .update({
+                            title: taskData.title,
+                            description: taskData.description,
+                            category: taskData.category,
+                            time_phase: taskData.timePhase,
+                            status: taskData.status,
+                            responsible: taskData.responsible,
+                            created_by: taskData.createdBy,
+                            start_date: taskData.startDate,
+                            end_date: taskData.endDate,
+                            duration: taskData.duration,
+                            progress: taskData.progress
+                        })
+                        .eq('id', taskId)
+                        .select()
+                        .single();
+
+                    if (error) throw error;
+                    return data;
+                } catch (error) {
+                    console.error('Görev güncellenirken hata:', error);
+                    throw error;
+                }
+            }
+
             // Görev durumu güncelle
             static async updateTaskStatus(taskId, newStatus) {
                 try {
@@ -368,6 +399,52 @@
                     throw error;
                 }
             }
+
+            // Real-time değişiklikleri dinle
+            static subscribeToChanges(callback) {
+                const subscription = supabaseClient
+                    .channel('tasks-changes')
+                    .on('postgres_changes', 
+                        { event: '*', schema: 'public', table: 'tasks' }, 
+                        callback
+                    )
+                    .subscribe();
+
+                return subscription;
+            }
+
+            // Subscription'ı kaldır
+            static unsubscribeFromChanges(subscription) {
+                supabaseClient.removeChannel(subscription);
+            }
+
+            // Bulk import işlemi
+            static async bulkImportTasks(tasksArray) {
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('tasks')
+                        .insert(tasksArray.map(task => ({
+                            title: task.title,
+                            description: task.description,
+                            category: task.category,
+                            time_phase: task.timePhase,
+                            status: task.status,
+                            responsible: task.responsible,
+                            created_by: task.createdBy,
+                            start_date: task.startDate,
+                            end_date: task.endDate,
+                            duration: task.duration,
+                            progress: task.progress
+                        })))
+                        .select();
+
+                    if (error) throw error;
+                    return data;
+                } catch (error) {
+                    console.error('Bulk import hatası:', error);
+                    throw error;
+                }
+            }
         }
 
         console.log('📄 TaskAPI yüklendi');
@@ -387,6 +464,8 @@
             timePhase: 'all'
         };
         let editingTask = null;
+        let draggedTask = null;
+        let realtimeSubscription = null;
 
         // Sabitler
         const categories = {
@@ -428,12 +507,16 @@
                 // Verileri yükle
                 await loadTasks();
                 
+                // Real-time subscription'ı başlat
+                startRealtimeSubscription();
+                
                 // Loading overlay'ı gizle
                 hideLoading();
                 
                 console.log('✅ Uygulama başarıyla başlatıldı');
             } catch (error) {
                 console.error('❌ Uygulama başlatma hatası:', error);
+                showError('Uygulama başlatılırken hata oluştu: ' + error.message);
                 hideLoading();
             }
         }
@@ -465,11 +548,72 @@
                 updateFilteredTasks();
                 updateResponsibleFilter();
                 renderContent();
+                updateConnectionStatus(true);
             } catch (error) {
                 console.error('❌ Görevler yüklenirken hata:', error);
+                showError('Veriler yüklenirken hata oluştu');
+                updateConnectionStatus(false);
             } finally {
                 hideLoading();
             }
+        }
+
+        function startRealtimeSubscription() {
+            if (realtimeSubscription) {
+                TaskAPI.unsubscribeFromChanges(realtimeSubscription);
+            }
+            
+            realtimeSubscription = TaskAPI.subscribeToChanges((payload) => {
+                console.log('🔄 Real-time update:', payload);
+                handleRealtimeUpdate(payload);
+            });
+        }
+
+        function handleRealtimeUpdate(payload) {
+            const { eventType, new: newRecord, old: oldRecord } = payload;
+            
+            switch (eventType) {
+                case 'INSERT':
+                    const newTask = convertSupabaseTask(newRecord);
+                    tasks.push(newTask);
+                    showSuccess('Yeni görev eklendi: ' + newTask.title);
+                    break;
+                    
+                case 'UPDATE':
+                    const updatedTask = convertSupabaseTask(newRecord);
+                    const index = tasks.findIndex(t => t.id === updatedTask.id);
+                    if (index !== -1) {
+                        tasks[index] = updatedTask;
+                        showSuccess('Görev güncellendi: ' + updatedTask.title);
+                    }
+                    break;
+                    
+                case 'DELETE':
+                    tasks = tasks.filter(t => t.id !== oldRecord.id);
+                    showSuccess('Görev silindi');
+                    break;
+            }
+            
+            updateFilteredTasks();
+            updateResponsibleFilter();
+            renderContent();
+        }
+
+        function convertSupabaseTask(supabaseTask) {
+            return {
+                id: supabaseTask.id,
+                title: supabaseTask.title,
+                description: supabaseTask.description || '',
+                category: supabaseTask.category,
+                timePhase: supabaseTask.time_phase,
+                status: supabaseTask.status,
+                responsible: supabaseTask.responsible || '',
+                createdBy: supabaseTask.created_by || '',
+                startDate: supabaseTask.start_date || '',
+                endDate: supabaseTask.end_date || '',
+                duration: supabaseTask.duration || 0,
+                progress: supabaseTask.progress || 0
+            };
         }
 
         function initializeEventListeners() {
@@ -484,11 +628,85 @@
                 });
             });
 
-            // Add Task Button
+            // Search and filters
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.addEventListener('input', debounce((e) => {
+                    searchTerm = e.target.value;
+                    updateFilteredTasks();
+                    renderContent();
+                }, 300));
+            }
+
+            const statusFilter = document.getElementById('statusFilter');
+            if (statusFilter) {
+                statusFilter.addEventListener('change', (e) => {
+                    filters.status = e.target.value;
+                    updateFilteredTasks();
+                    renderContent();
+                });
+            }
+
+            const categoryFilter = document.getElementById('categoryFilter');
+            if (categoryFilter) {
+                categoryFilter.addEventListener('change', (e) => {
+                    filters.category = e.target.value;
+                    updateFilteredTasks();
+                    renderContent();
+                });
+            }
+
+            const responsibleFilter = document.getElementById('responsibleFilter');
+            if (responsibleFilter) {
+                responsibleFilter.addEventListener('change', (e) => {
+                    filters.responsible = e.target.value;
+                    updateFilteredTasks();
+                    renderContent();
+                });
+            }
+
+            const timePhaseFilter = document.getElementById('timePhaseFilter');
+            if (timePhaseFilter) {
+                timePhaseFilter.addEventListener('change', (e) => {
+                    filters.timePhase = e.target.value;
+                    updateFilteredTasks();
+                    renderContent();
+                });
+            }
+
+            const clearFiltersBtn = document.getElementById('clearFiltersBtn');
+            if (clearFiltersBtn) {
+                clearFiltersBtn.addEventListener('click', () => {
+                    clearFilters();
+                });
+            }
+
+            // Buttons
             const addTaskBtn = document.getElementById('addTaskBtn');
             if (addTaskBtn) {
                 addTaskBtn.addEventListener('click', () => {
                     openTaskModal();
+                });
+            }
+
+            const exportBtn = document.getElementById('exportBtn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', () => {
+                    exportTasks();
+                });
+            }
+
+            const importBtn = document.getElementById('importBtn');
+            if (importBtn) {
+                importBtn.addEventListener('click', () => {
+                    importExcel();
+                });
+            }
+
+            const refreshBtn = document.getElementById('refreshBtn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', () => {
+                    loadTasks();
                 });
             }
 
@@ -504,6 +722,37 @@
             if (cancelTaskBtn) {
                 cancelTaskBtn.addEventListener('click', () => {
                     closeTaskModal();
+                });
+            }
+
+            const saveTaskBtn = document.getElementById('saveTaskBtn');
+            if (saveTaskBtn) {
+                saveTaskBtn.addEventListener('click', () => {
+                    saveTask();
+                });
+            }
+
+            const taskStatus = document.getElementById('taskStatus');
+            if (taskStatus) {
+                taskStatus.addEventListener('change', (e) => {
+                    const progressContainer = document.getElementById('progressContainer');
+                    if (progressContainer) {
+                        if (e.target.value === 'ongoing') {
+                            progressContainer.classList.remove('hidden');
+                        } else {
+                            progressContainer.classList.add('hidden');
+                        }
+                    }
+                });
+            }
+
+            const taskProgress = document.getElementById('taskProgress');
+            if (taskProgress) {
+                taskProgress.addEventListener('input', (e) => {
+                    const progressValue = document.getElementById('progressValue');
+                    if (progressValue) {
+                        progressValue.textContent = e.target.value;
+                    }
                 });
             }
         }
@@ -523,6 +772,144 @@
             }
         }
 
+        function showError(message) {
+            console.error('🚨 Error:', message);
+            const toast = document.getElementById('errorToast');
+            const messageEl = document.getElementById('errorMessage');
+            if (toast && messageEl) {
+                messageEl.textContent = message;
+                toast.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    toast.classList.add('hidden');
+                }, 5000);
+            }
+        }
+
+        function showSuccess(message) {
+            console.log('✅ Success:', message);
+            const toast = document.getElementById('successToast');
+            const messageEl = document.getElementById('successMessage');
+            if (toast && messageEl) {
+                messageEl.textContent = message;
+                toast.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    toast.classList.add('hidden');
+                }, 3000);
+            }
+        }
+
+        function updateConnectionStatus(isConnected) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (!statusEl) return;
+            
+            const dot = statusEl.querySelector('div');
+            const text = statusEl.querySelector('span');
+            
+            if (dot && text) {
+                if (isConnected) {
+                    dot.className = 'w-2 h-2 bg-green-500 rounded-full mr-2';
+                    text.textContent = 'Bağlı';
+                    text.className = 'text-green-600';
+                } else {
+                    dot.className = 'w-2 h-2 bg-red-500 rounded-full mr-2';
+                    text.textContent = 'Bağlantı Hatası';
+                    text.className = 'text-red-600';
+                }
+            }
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        function clearFilters() {
+            searchTerm = '';
+            filters = { status: 'all', category: 'all', responsible: 'all', timePhase: 'all' };
+            
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) searchInput.value = '';
+            
+            const statusFilter = document.getElementById('statusFilter');
+            if (statusFilter) statusFilter.value = 'all';
+            
+            const categoryFilter = document.getElementById('categoryFilter');
+            if (categoryFilter) categoryFilter.value = 'all';
+            
+            const responsibleFilter = document.getElementById('responsibleFilter');
+            if (responsibleFilter) responsibleFilter.value = 'all';
+            
+            const timePhaseFilter = document.getElementById('timePhaseFilter');
+            if (timePhaseFilter) timePhaseFilter.value = 'all';
+            
+            updateFilteredTasks();
+            renderContent();
+        }
+
+        // Task management functions
+        async function saveTask() {
+            const saveBtn = document.getElementById('saveTaskBtn');
+            const saveBtnText = document.getElementById('saveTaskBtnText');
+            
+            try {
+                // Form validation
+                const titleEl = document.getElementById('taskTitle');
+                if (!titleEl) return;
+                
+                const title = titleEl.value.trim();
+                if (!title) {
+                    showError('Görev başlığı gereklidir!');
+                    return;
+                }
+
+                // Disable button
+                if (saveBtn) saveBtn.disabled = true;
+                if (saveBtnText) saveBtnText.textContent = 'Kaydediliyor...';
+
+                const taskData = {
+                    title: title,
+                    description: document.getElementById('taskDescription')?.value.trim() || '',
+                    category: document.getElementById('taskCategory')?.value || 'sourcing',
+                    timePhase: document.getElementById('taskTimePhase')?.value || '30_days',
+                    status: document.getElementById('taskStatus')?.value || 'pending',
+                    responsible: document.getElementById('taskResponsible')?.value.trim() || '',
+                    createdBy: document.getElementById('taskCreatedBy')?.value.trim() || '',
+                    startDate: document.getElementById('taskStartDate')?.value || '',
+                    endDate: document.getElementById('taskEndDate')?.value || '',
+                    duration: parseInt(document.getElementById('taskDuration')?.value) || 0,
+                    progress: parseInt(document.getElementById('taskProgress')?.value) || 0
+                };
+
+                let result;
+                if (editingTask) {
+                    result = await TaskAPI.updateTask(editingTask.id, taskData);
+                    showSuccess('Görev başarıyla güncellendi');
+                } else {
+                    result = await TaskAPI.createTask(taskData);
+                    showSuccess('Yeni görev başarıyla oluşturuldu');
+                }
+
+                closeTaskModal();
+                
+            } catch (error) {
+                console.error('Görev kaydetme hatası:', error);
+                showError('Görev kaydedilirken hata oluştu');
+            } finally {
+                if (saveBtn) saveBtn.disabled = false;
+                if (saveBtnText) saveBtnText.textContent = 'Kaydet';
+            }
+        }
+
+        // UI rendering functions
         function updateFilteredTasks() {
             filteredTasks = tasks.filter(task => {
                 const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -567,33 +954,34 @@
             responsibleFilter.value = currentValue;
         }
 
-      function renderContent() {
-    const mainContent = document.getElementById('mainContent');
-    if (!mainContent) return;
-    
-    switch(currentView) {
-        case 'dashboard':
-            mainContent.innerHTML = renderDashboardView();
-            break;
-        case 'roadmap':
-            mainContent.innerHTML = renderRoadmapView();
-            initializeRoadmapEvents();
-            break;
-        case 'gantt':
-            mainContent.innerHTML = renderGanttView();
-            break;
-        case 'activities':
-            mainContent.innerHTML = renderActivitiesView();
-            break;
-        default:
-            mainContent.innerHTML = '<div class="bg-white rounded-lg p-8 text-center"><h3 class="text-lg font-semibold text-gray-900">Bu görünüm henüz hazırlanıyor...</h3></div>';
-    }
-    
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
-}
+        function renderContent() {
+            const mainContent = document.getElementById('mainContent');
+            if (!mainContent) return;
+            
+            switch(currentView) {
+                case 'dashboard':
+                    mainContent.innerHTML = renderDashboardView();
+                    break;
+                case 'roadmap':
+                    mainContent.innerHTML = renderRoadmapView();
+                    initializeRoadmapEvents();
+                    break;
+                case 'gantt':
+                    mainContent.innerHTML = renderGanttView();
+                    break;
+                case 'activities':
+                    mainContent.innerHTML = renderActivitiesView();
+                    break;
+                default:
+                    mainContent.innerHTML = '<div class="bg-white rounded-lg p-8 text-center"><h3 class="text-lg font-semibold text-gray-900">Bu görünüm henüz hazırlanıyor...</h3></div>';
+            }
+            
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
 
+        // View rendering functions
         function renderDashboardView() {
             const progress = calculateProgress();
             
@@ -649,17 +1037,58 @@
                     </div>
                 </div>
 
+                <!-- Progress Overview -->
+                <div class="bg-purple-50 border border-purple-200 p-6 rounded-lg shadow-lg">
+                    <h3 class="text-lg font-semibold mb-4 text-purple-900">Genel İlerleme</h3>
+                    <div class="w-full bg-purple-200 rounded-full h-4 mb-4">
+                        <div class="bg-gradient-to-r from-green-500 to-purple-500 h-4 rounded-full transition-all duration-500" style="width: ${progress.donePercentage + progress.ongoingPercentage}%"></div>
+                    </div>
+                    <div class="flex justify-between text-sm text-purple-600">
+                        <span>%${Math.round(progress.donePercentage)} Tamamlandı</span>
+                        <span>%${Math.round(progress.ongoingPercentage)} Devam Ediyor</span>
+                        <span>%${Math.round(100 - progress.donePercentage - progress.ongoingPercentage)} Kalan</span>
+                    </div>
+                </div>
+
+                <!-- Category Breakdown -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    ${Object.entries(categories).map(([catKey, category]) => {
+                        const categoryTasks = filteredTasks.filter(task => task.category === catKey);
+                        const categoryDone = categoryTasks.filter(task => task.status === 'done').length;
+                        const categoryProgress = categoryTasks.length > 0 ? (categoryDone / categoryTasks.length) * 100 : 0;
+
+                        return `
+                        <div class="bg-purple-50 border border-purple-200 p-6 rounded-lg shadow-lg">
+                            <div class="flex items-center justify-between mb-4">
+                                <h4 class="text-lg font-semibold text-purple-900">${category.name}</h4>
+                                <span class="text-2xl">${category.icon}</span>
+                            </div>
+                            <div class="space-y-2">
+                                <div class="flex justify-between text-sm text-purple-700">
+                                    <span>${categoryDone}/${categoryTasks.length} tamamlandı</span>
+                                    <span>${Math.round(categoryProgress)}%</span>
+                                </div>
+                                <div class="w-full bg-purple-200 rounded-full h-2">
+                                    <div class="h-2 rounded-full transition-all duration-300" style="background-color: ${category.color}; width: ${categoryProgress}%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        `;
+                    }).join('')}
+                </div>
+
                 <!-- Recent Activities -->
                 <div class="bg-purple-50 border border-purple-200 p-6 rounded-lg shadow-lg">
                     <h3 class="text-lg font-semibold mb-4 text-purple-900">Son Aktiviteler</h3>
                     <div class="space-y-3">
                         ${filteredTasks
-                            .slice(0, 5)
+                            .slice(0, 8)
                             .map(task => `
                                 <div class="flex items-center space-x-3">
                                     <div class="w-2 h-2 rounded-full ${task.status === 'done' ? 'bg-green-500' : task.status === 'ongoing' ? 'bg-yellow-500' : 'bg-gray-500'}"></div>
                                     <span class="text-sm text-purple-800 font-medium">${task.title}</span>
                                     <span class="text-xs text-purple-600">- ${task.responsible}</span>
+                                    <span class="text-xs text-purple-500">${categories[task.category].name}</span>
                                 </div>
                             `).join('')}
                     </div>
@@ -667,40 +1096,6 @@
             `;
         }
 
-        function calculateProgress() {
-            const totalTasks = tasks.length;
-            const doneTasks = tasks.filter(task => task.status === 'done').length;
-            const ongoingTasks = tasks.filter(task => task.status === 'ongoing').length;
-            const pendingTasks = tasks.filter(task => task.status === 'pending').length;
-
-            return {
-                total: totalTasks,
-                done: doneTasks,
-                ongoing: ongoingTasks,
-                pending: pendingTasks,
-                donePercentage: totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0,
-                ongoingPercentage: totalTasks > 0 ? (ongoingTasks / totalTasks) * 100 : 0
-            };
-        }
-
-        // Modal functions
-        function openTaskModal(task = null) {
-            const modal = document.getElementById('taskModal');
-            if (modal) {
-                modal.classList.remove('hidden');
-            }
-        }
-
-        function closeTaskModal() {
-            const modal = document.getElementById('taskModal');
-            if (modal) {
-                modal.classList.add('hidden');
-            }
-        }
-
-        console.log('📄 app.js yüklendi');
-    </script>
-    // ROADMAP VİEW FONKSİYONU
         function renderRoadmapView() {
             const categoryEntries = Object.entries(categories);
             
@@ -747,7 +1142,6 @@
             `;
         }
 
-        // ROADMAP TASK CARD FONKSİYONU
         function renderRoadmapTaskCard(task) {
             const shortTitle = task.title.length > 45 ? task.title.substring(0, 42) + '...' : task.title;
             const shortDesc = task.description.length > 35 ? task.description.substring(0, 32) + '...' : task.description;
@@ -794,7 +1188,6 @@
             `;
         }
 
-        // GANTT VİEW FONKSİYONU
         function renderGanttView() {
             const today = new Date();
             const startDate = new Date('2025-04-01');
@@ -852,7 +1245,6 @@
             `;
         }
 
-        // AKTİVİTELER VİEW FONKSİYONU
         function renderActivitiesView() {
             const today = new Date();
             const thisWeekActivities = getThisWeekActivities();
@@ -1005,7 +1397,23 @@
             `;
         }
 
-        // YARDIMCI FONKSİYONLAR
+        // Helper functions
+        function calculateProgress() {
+            const totalTasks = tasks.length;
+            const doneTasks = tasks.filter(task => task.status === 'done').length;
+            const ongoingTasks = tasks.filter(task => task.status === 'ongoing').length;
+            const pendingTasks = tasks.filter(task => task.status === 'pending').length;
+
+            return {
+                total: totalTasks,
+                done: doneTasks,
+                ongoing: ongoingTasks,
+                pending: pendingTasks,
+                donePercentage: totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0,
+                ongoingPercentage: totalTasks > 0 ? (ongoingTasks / totalTasks) * 100 : 0
+            };
+        }
+
         function getTaskPosition(task, startDate, endDate) {
             if (!task.startDate || !task.endDate) {
                 return { left: '0%', width: '10%' };
@@ -1056,7 +1464,6 @@
             return activities.sort((a, b) => b.date - a.date);
         }
 
-        // ROADMAP ETKİLEŞİMLERİ
         function initializeRoadmapEvents() {
             // Drag and drop
             document.querySelectorAll('.task-card[draggable="true"]').forEach(card => {
@@ -1096,6 +1503,7 @@
                                 // Real-time subscription otomatik güncelleyecek
                             } catch (error) {
                                 console.error('Zaman dilimi güncellenirken hata:', error);
+                                showError('Zaman dilimi güncellenirken hata oluştu');
                             }
                         }
                     }
@@ -1114,6 +1522,7 @@
                         // Real-time subscription otomatik güncelleyecek
                     } catch (error) {
                         console.error('Durum güncellenirken hata:', error);
+                        showError('Görev durumu güncellenirken hata oluştu');
                     }
                 });
             });
@@ -1129,7 +1538,206 @@
             });
         }
 
-        // GLOBAL FONKSİYONLAR
+        // Modal functions
+        function openTaskModal(task = null) {
+            editingTask = task;
+            const modal = document.getElementById('taskModal');
+            if (!modal) return;
+            
+            const title = document.getElementById('modalTitle');
+            if (title) {
+                title.textContent = task ? 'Görev Düzenle' : 'Yeni Görev Ekle';
+            }
+            
+            // Fill form
+            const fields = {
+                'taskTitle': task?.title || '',
+                'taskDescription': task?.description || '',
+                'taskCategory': task?.category || 'sourcing',
+                'taskTimePhase': task?.timePhase || '30_days',
+                'taskStatus': task?.status || 'pending',
+                'taskResponsible': task?.responsible || '',
+                'taskCreatedBy': task?.createdBy || '',
+                'taskStartDate': task?.startDate || '',
+                'taskEndDate': task?.endDate || '',
+                'taskDuration': task?.duration || 0,
+                'taskProgress': task?.progress || 0
+            };
+            
+            Object.entries(fields).forEach(([id, value]) => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.value = value;
+                }
+            });
+            
+            const progressValue = document.getElementById('progressValue');
+            if (progressValue) {
+                progressValue.textContent = task?.progress || 0;
+            }
+            
+            // Show/hide progress
+            const progressContainer = document.getElementById('progressContainer');
+            if (progressContainer) {
+                if (task?.status === 'ongoing') {
+                    progressContainer.classList.remove('hidden');
+                } else {
+                    progressContainer.classList.add('hidden');
+                }
+            }
+            
+            modal.classList.remove('hidden');
+            
+            const titleInput = document.getElementById('taskTitle');
+            if (titleInput) {
+                titleInput.focus();
+            }
+            
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        function closeTaskModal() {
+            const modal = document.getElementById('taskModal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+            editingTask = null;
+        }
+
+        // Import/Export functions
+        function exportTasks() {
+            try {
+                const headers = ['Başlık', 'Açıklama', 'Kategori', 'Zaman Dilimi', 'Durum', 'Sorumlu', 'Oluşturan', 'Başlangıç Tarihi', 'Bitiş Tarihi', 'Süre', 'İlerleme'];
+                const data = tasks.map(task => [
+                    `"${task.title}"`,
+                    `"${task.description}"`,
+                    `"${categories[task.category]?.name || task.category}"`,
+                    `"${timePhases[task.timePhase]?.name || task.timePhase}"`,
+                    `"${statusConfig[task.status]?.name || task.status}"`,
+                    `"${task.responsible}"`,
+                    `"${task.createdBy || ''}"`,
+                    task.startDate,
+                    task.endDate,
+                    task.duration,
+                    task.progress
+                ]);
+
+                const csvContent = [headers.join(','), ...data.map(row => row.join(','))].join('\n');
+                const blob = new Blob([csvContent], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `kyrgyzstan_project_tasks_${new Date().toISOString().split('T')[0]}.xlsx`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                
+                showSuccess('Veriler Excel formatında dışa aktarıldı');
+            } catch (error) {
+                console.error('Export hatası:', error);
+                showError('Dışa aktarma sırasında hata oluştu');
+            }
+        }
+
+        function importExcel() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.xlsx,.xls,.csv';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                try {
+                    showLoading();
+                    const content = await readFileAsText(file);
+                    const lines = content.split('\n');
+                    
+                    if (lines.length > 1) {
+                        const importedTasks = [];
+                        
+                        for (let i = 1; i < lines.length; i++) {
+                            const line = lines[i].trim();
+                            if (!line) continue;
+                            
+                            const row = line.split(',').map(cell => cell.replace(/"/g, '').trim());
+                            if (row.length > 0 && row[0]) {
+                                const taskData = {
+                                    title: row[0] || '',
+                                    description: row[1] || '',
+                                    category: getCategoryKey(row[2]) || 'sourcing',
+                                    timePhase: getTimePhaseKey(row[3]) || '30_days',
+                                    status: getStatusKey(row[4]) || 'pending',
+                                    responsible: row[5] || '',
+                                    createdBy: row[6] || '',
+                                    startDate: row[7] || '',
+                                    endDate: row[8] || '',
+                                    duration: parseInt(row[9]) || 0,
+                                    progress: parseInt(row[10]) || 0
+                                };
+                                
+                                if (taskData.title.trim()) {
+                                    importedTasks.push(taskData);
+                                }
+                            }
+                        }
+
+                        if (importedTasks.length > 0) {
+                            await TaskAPI.bulkImportTasks(importedTasks);
+                            showSuccess(`${importedTasks.length} görev başarıyla içe aktarıldı!`);
+                        } else {
+                            showError('Dosyada geçerli görev bulunamadı.');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Import error:', error);
+                    showError('Dosya içe aktarma hatası. Lütfen dosya formatını kontrol edin.');
+                } finally {
+                    hideLoading();
+                }
+            };
+            input.click();
+        }
+
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = (e) => reject(e);
+                reader.readAsText(file);
+            });
+        }
+
+        // Helper functions for import
+        function getCategoryKey(categoryName) {
+            const categoryMap = {
+                'KAYNAK BULMA': 'sourcing',
+                'İŞE ALIM': 'hiring',
+                'YERLEŞTİRME VE HUKUK': 'placement_legal'
+            };
+            return categoryMap[categoryName] || 'sourcing';
+        }
+
+        function getTimePhaseKey(phaseName) {
+            const phaseMap = {
+                '30 Gün': '30_days',
+                '60 Gün': '60_days',
+                '90 Gün': '90_days',
+                'Yıl Sonu': 'end_of_year'
+            };
+            return phaseMap[phaseName] || '30_days';
+        }
+
+        function getStatusKey(statusName) {
+            const statusMap = {
+                'Tamamlandı': 'done',
+                'Devam Ediyor': 'ongoing',
+                'Beklemede': 'pending'
+            };
+            return statusMap[statusName] || 'pending';
+        }
+
+        // Global functions
         function copyToClipboard() {
             const thisWeekActivities = getThisWeekActivities();
             const completedTasks = thisWeekActivities.filter(activity => activity.type === 'completed');
@@ -1144,10 +1752,20 @@
 📊 Toplam aktif görev sayısı: ${tasks.filter(t => t.status !== 'done').length}`;
 
             navigator.clipboard.writeText(text).then(() => {
-                alert('Metin panoya kopyalandı!');
+                showSuccess('Metin panoya kopyalandı!');
             }).catch(() => {
-                alert('Kopyalama işlemi başarısız. Metni manuel olarak kopyalayın.');
+                showError('Kopyalama işlemi başarısız. Metni manuel olarak kopyalayın.');
             });
         }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (realtimeSubscription) {
+                TaskAPI.unsubscribeFromChanges(realtimeSubscription);
+            }
+        });
+
+        console.log('📄 app.js yüklendi');
+    </script>
 </body>
 </html>
