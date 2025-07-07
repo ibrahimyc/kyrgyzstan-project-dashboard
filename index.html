@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kırgızistan Projesi Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <!-- Supabase CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .drag-over {
+            background-color: #e5e7eb;
+        }
+        .dragging {
+            opacity: 0.5;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-100">
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 flex items-center space-x-3">
+            <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
+            <span class="text-gray-700">Veriler yükleniyor...</span>
+        </div>
+    </div>
+
+    <div id="app">
+        <!-- Header -->
+        <div class="bg-white shadow-sm border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">Kırgızistan Projesi Dashboard</h1>
+                        <p class="text-sm text-gray-600">Proje Yönetim Sistemi</p>
+                    </div>
+                    
+                    <div class="flex items-center space-x-4">
+                        <div id="connectionStatus" class="flex items-center text-sm">
+                            <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                            <span class="text-green-600">Bağlı</span>
+                        </div>
+                        
+                        <button id="refreshBtn" class="p-2 text-gray-400 hover:text-gray-600">
+                            <i data-lucide="refresh-cw"></i>
+                        </button>
+                        
+                        <button id="notificationBtn" class="p-2 text-gray-400 hover:text-gray-600 relative">
+                            <i data-lucide="bell"></i>
+                            <span id="notificationBadge" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
+                        </button>
+                        
+                        <button id="importBtn" class="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                            <i data-lucide="upload" class="mr-2 w-4 h-4"></i>
+                            Excel İçe Aktar
+                        </button>
+                        
+                        <button id="exportBtn" class="flex items-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                            <i data-lucide="download" class="mr-2 w-4 h-4"></i>
+                            Excel Dışa Aktar
+                        </button>
+                        
+                        <button id="addTaskBtn" class="flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                            <i data-lucide="plus" class="mr-2 w-4 h-4"></i>
+                            Görev Ekle
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="bg-white border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <nav class="flex space-x-8 py-3">
+                    <button data-view="dashboard" class="nav-btn flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors bg-purple-100 text-purple-700">
+                        <i data-lucide="bar-chart-3" class="mr-2 w-4 h-4"></i>
+                        Panel
+                    </button>
+                    <button data-view="roadmap" class="nav-btn flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-100">
+                        <i data-lucide="calendar" class="mr-2 w-4 h-4"></i>
+                        Yol Haritası
+                    </button>
+                    <button data-view="gantt" class="nav-btn flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-100">
+                        <i data-lucide="clock" class="mr-2 w-4 h-4"></i>
+                        Gantt Şeması
+                    </button>
+                    <button data-view="activities" class="nav-btn flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-100">
+                        <i data-lucide="activity" class="mr-2 w-4 h-4"></i>
+                        Aktiviteler
+                    </button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
+                <div class="flex flex-wrap gap-4 items-center">
+                    <div class="flex-1 min-w-[200px]">
+                        <div class="relative">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5"></i>
+                            <input
+                                type="text"
+                                id="searchInput"
+                                placeholder="Görevleri ara..."
+                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            />
+                        </div>
+                    </div>
+                    
+                    <select id="statusFilter" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                        <option value="all">Tüm Durumlar</option>
+                        <option value="done">Tamamlandı</option>
+                        <option value="ongoing">Devam Ediyor</option>
+                        <option value="pending">Beklemede</option>
+                    </select>
+                    
+                    <select id="categoryFilter" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                        <option value="all">Tüm Kategoriler</option>
+                        <option value="sourcing">KAYNAK BULMA</option>
+                        <option value="hiring">İŞE ALIM</option>
+                        <option value="placement_legal">YERLEŞTİRME VE HUKUK</option>
+                    </select>
+                    
+                    <select id="responsibleFilter" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                        <option value="all">Tüm Sorumlu Kişiler</option>
+                    </select>
+                    
+                    <select id="timePhaseFilter" class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                        <option value="all">Tüm Zaman Dilimleri</option>
+                        <option value="30_days">30 Gün</option>
+                        <option value="60_days">60 Gün</option>
+                        <option value="90_days">90 Gün</option>
+                        <option value="end_of_year">Yıl Sonu</option>
+                    </select>
+                    
+                    <button id="clearFiltersBtn" class="px-3 py-2 text-gray-600 hover:text-gray-800 transition-colors">
+                        Filtreleri Temizle
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div id="mainContent" class="space-y-6">
+                <!-- Content will be rendered here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Modal (Aynı kalıyor, sadece id'ler değişiyor) -->
+    <div id="taskModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h3 id="modalTitle" class="text-lg font-semibold">Yeni Görev Ekle</h3>
+                <button id="closeModalBtn">
+                    <i data-lucide="x" class="w-5 h-5 text-gray-400"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Görev Başlığı *</label>
+                    <input type="text" id="taskTitle" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" required />
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Açıklama</label>
+                    <textarea id="taskDescription" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" rows="3"></textarea>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
+                        <select id="taskCategory" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                            <option value="sourcing">KAYNAK BULMA</option>
+                            <option value="hiring">İŞE ALIM</option>
+                            <option value="placement_legal">YERLEŞTİRME VE HUKUK</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Zaman Dilimi</label>
+                        <select id="taskTimePhase" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                            <option value="30_days">30 Gün</option>
+                            <option value="60_days">60 Gün</option>
+                            <option value="90_days">90 Gün</option>
+                            <option value="end_of_year">Yıl Sonu</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Durum</label>
+                        <select id="taskStatus" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
+                            <option value="pending">Beklemede</option>
+                            <option value="ongoing">Devam Ediyor</option>
+                            <option value="done">Tamamlandı</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Süre (gün)</label>
+                        <input type="number" id="taskDuration" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Sorumlu</label>
+                    <input type="text" id="taskResponsible" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Sorumlu kişi adı" />
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Oluşturan</label>
+                    <input type="text" id="taskCreatedBy" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Oluşturan kişi adı" />
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Başlangıç Tarihi</label>
+                        <input type="date" id="taskStartDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Bitiş Tarihi</label>
+                        <input type="date" id="taskEndDate" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" />
+                    </div>
+                </div>
+
+                <div id="progressContainer" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">İlerleme (<span id="progressValue">0</span>%)</label>
+                    <input type="range" id="taskProgress" min="0" max="100" value="0" class="w-full" />
+                </div>
+
+                <div class="flex gap-3 pt-4">
+                    <button id="saveTaskBtn" class="flex-1 bg-purple-600 text-white py-2 px-4 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50">
+                        <i data-lucide="save" class="inline mr-2 w-4 h-4"></i>
+                        <span id="saveTaskBtnText">Kaydet</span>
+                    </button>
+                    <button id="cancelTaskBtn" class="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors">
+                        İptal
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Toast -->
+    <div id="errorToast" class="fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg hidden z-50">
+        <div class="flex items-center">
+            <i data-lucide="alert-circle" class="mr-2 w-4 h-4"></i>
+            <span id="errorMessage">Bir hata oluştu</span>
+        </div>
+    </div>
+
+    <!-- Success Toast -->
+    <div id="successToast" class="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg hidden z-50">
+        <div class="flex items-center">
+            <i data-lucide="check-circle" class="mr-2 w-4 h-4"></i>
+            <span id="successMessage">İşlem başarılı</span>
+        </div>
+    </div>
+
+    <!-- Include the Supabase client script -->
+    <script>
+        // Supabase Configuration - Bu değerleri Supabase projenizden alın
+        const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+        
+        // Check if Supabase credentials are set
+        if (SUPABASE_URL === 'YOUR_SUPABASE_URL' || SUPABASE_ANON_KEY === 'YOUR_SUPABASE_ANON_KEY') {
+            alert('⚠️ Supabase konfigürasyonu gerekli!\n\nLütfen SUPABASE_URL ve SUPABASE_ANON_KEY değerlerini güncelleyin.\n\nBu değerleri Supabase Dashboard > Settings > API bölümünden alabilirsiniz.');
+        }
+    </script>
+    
+    <!-- Main Application Script -->
+    <script src="js/supabase-client.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
