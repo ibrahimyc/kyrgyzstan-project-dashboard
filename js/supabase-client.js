@@ -2,8 +2,8 @@
 // Supabase Client Configuration ve API İşlemleri
 
 // Supabase konfigürasyonu - Bu değerleri kendi Supabase projenizden alın
-const SUPABASE_URL = 'https://your-project-ref.supabase.co';
-const SUPABASE_ANON_KEY = 'your-anon-key';
+const SUPABASE_URL = 'https://uxhxcnxvntmoisomsgax.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV4aHhjbnh2bnRtb2lzb21zZ2F4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE4OTUzNzMsImV4cCI6MjA2NzQ3MTM3M30._3gLOhPkBRMitSwEQ7qT582lDg8IgytRwUd_K401xAk';
 
 // Supabase client'ı başlat
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
