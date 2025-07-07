@@ -5,9 +5,12 @@
   "main": "index.html",
   "scripts": {
     "build": "node build.js",
-    "start": "npx http-server ."
+    "start": "npx http-server . -p 3000"
   },
   "keywords": ["project-management", "dashboard", "supabase"],
   "author": "Your Name",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
 }
