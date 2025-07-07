@@ -567,22 +567,32 @@
             responsibleFilter.value = currentValue;
         }
 
-        function renderContent() {
-            const mainContent = document.getElementById('mainContent');
-            if (!mainContent) return;
-            
-            switch(currentView) {
-                case 'dashboard':
-                    mainContent.innerHTML = renderDashboardView();
-                    break;
-                default:
-                    mainContent.innerHTML = '<div class="bg-white rounded-lg p-8 text-center"><h3 class="text-lg font-semibold text-gray-900">Bu görünüm henüz hazırlanıyor...</h3></div>';
-            }
-            
-            if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
-            }
-        }
+      function renderContent() {
+    const mainContent = document.getElementById('mainContent');
+    if (!mainContent) return;
+    
+    switch(currentView) {
+        case 'dashboard':
+            mainContent.innerHTML = renderDashboardView();
+            break;
+        case 'roadmap':
+            mainContent.innerHTML = renderRoadmapView();
+            initializeRoadmapEvents();
+            break;
+        case 'gantt':
+            mainContent.innerHTML = renderGanttView();
+            break;
+        case 'activities':
+            mainContent.innerHTML = renderActivitiesView();
+            break;
+        default:
+            mainContent.innerHTML = '<div class="bg-white rounded-lg p-8 text-center"><h3 class="text-lg font-semibold text-gray-900">Bu görünüm henüz hazırlanıyor...</h3></div>';
+    }
+    
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+}
 
         function renderDashboardView() {
             const progress = calculateProgress();
