@@ -1,0 +1,13 @@
+{
+  "name": "kyrgyzstan-project-dashboard",
+  "version": "1.0.0",
+  "description": "Kırgızistan Projesi Yönetim Dashboard'u",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx http-server .",
+    "build": "echo 'No build step needed for static site'"
+  },
+  "keywords": ["project-management", "dashboard", "supabase"],
+  "author": "Your Name",
+  "license": "MIT"
+}
