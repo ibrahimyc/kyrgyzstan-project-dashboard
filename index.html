@@ -690,7 +690,454 @@
 
         console.log('📄 app.js yüklendi');
     </script>
-</body>
-</html>
+    // ROADMAP VİEW FONKSİYONU
+        function renderRoadmapView() {
+            const categoryEntries = Object.entries(categories);
+            
+            return `
+                <div class="bg-white rounded-lg overflow-hidden shadow-lg">
+                    <!-- Header -->
+                    <div class="grid grid-cols-5 gap-0">
+                        <div class="bg-gradient-to-r from-purple-600 to-purple-800 text-white font-bold text-center py-2 text-sm">
+                            GİRİŞİM
+                        </div>
+                        ${Object.entries(timePhases).map(([key, phase]) => `
+                            <div class="text-white font-bold text-center py-2 text-xs" style="background-color: ${phase.color}">
+                                ${phase.name}
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <!-- Content -->
+                    ${categoryEntries.map(([catKey, category], categoryIndex) => `
+                        ${categoryIndex > 0 ? '<div class="h-1 bg-gray-100"></div>' : ''}
+                        <div class="grid grid-cols-5 gap-0">
+                            <!-- Category Header -->
+                            <div class="text-white font-bold flex items-center justify-center p-1.5 text-center min-h-[150px]" style="background-color: ${category.color}">
+                                <div>
+                                    <div class="text-base mb-1">${category.icon}</div>
+                                    <div class="text-base font-bold leading-tight">${category.name}</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Category Cells -->
+                            ${Object.keys(timePhases).map(phaseKey => `
+                                <div class="drop-zone p-1 border-r border-b border-gray-200 bg-gray-50 min-h-[150px]" 
+                                     data-category="${catKey}" 
+                                     data-phase="${phaseKey}">
+                                    ${filteredTasks
+                                        .filter(task => task.category === catKey && task.timePhase === phaseKey)
+                                        .map(task => renderRoadmapTaskCard(task))
+                                        .join('')}
+                                </div>
+                            `).join('')}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // ROADMAP TASK CARD FONKSİYONU
+        function renderRoadmapTaskCard(task) {
+            const shortTitle = task.title.length > 45 ? task.title.substring(0, 42) + '...' : task.title;
+            const shortDesc = task.description.length > 35 ? task.description.substring(0, 32) + '...' : task.description;
+            
+            return `
+                <div class="task-card rounded bg-purple-50 border border-purple-200 p-1.5 mb-1.5 shadow-sm hover:shadow-md transition-all duration-200 cursor-move"
+                     data-task-id="${task.id}"
+                     draggable="true">
+                    <div class="flex items-start justify-between mb-1.5">
+                        <h4 class="font-bold text-[9px] text-purple-900 leading-tight flex-1 pr-1 break-words">${shortTitle}</h4>
+                        <button class="edit-task-btn p-0.5 hover:bg-purple-200 rounded flex-shrink-0" data-task-id="${task.id}">
+                            <i data-lucide="edit-2" class="w-2.5 h-2.5 text-purple-600"></i>
+                        </button>
+                    </div>
+                    
+                    <p class="text-[8px] text-purple-700 mb-1.5 leading-tight font-medium break-words">${shortDesc}</p>
+                    
+                    <div class="flex items-center justify-between text-[7px]">
+                        <span class="text-purple-800 font-bold truncate flex-1 pr-1">${task.responsible}</span>
+                        <div class="flex gap-0.5 flex-shrink-0">
+                            ${['pending', 'ongoing', 'done'].map(status => `
+                                <button class="status-btn w-2 h-2 rounded-full border transition-colors ${
+                                    task.status === status 
+                                        ? (status === 'done' ? 'bg-green-500 border-green-600' :
+                                           status === 'ongoing' ? 'bg-yellow-500 border-yellow-600' :
+                                           'bg-red-500 border-red-600')
+                                        : 'border-gray-400 hover:border-gray-600'
+                                }" 
+                                data-task-id="${task.id}" 
+                                data-status="${status}" 
+                                title="${statusConfig[status].name}"></button>
+                            `).join('')}
+                        </div>
+                    </div>
+                    
+                    ${task.status === 'ongoing' ? `
+                        <div class="mt-1.5">
+                            <div class="w-full bg-purple-200 rounded-full h-0.5">
+                                <div class="bg-purple-600 h-0.5 rounded-full transition-all duration-300" style="width: ${task.progress}%"></div>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        // GANTT VİEW FONKSİYONU
+        function renderGanttView() {
+            const today = new Date();
+            const startDate = new Date('2025-04-01');
+            const endDate = new Date('2026-02-01');
+            
+            return `
+                <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="text-lg font-semibold">Gantt Şeması Görünümü</h3>
+                        <p class="text-sm text-gray-600">Görevlerin zaman çizelgesi</p>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <div class="min-w-[1200px]">
+                            <!-- Timeline Header -->
+                            <div class="flex border-b border-gray-200">
+                                <div class="w-80 p-3 font-semibold bg-gray-50">Görev</div>
+                                <div class="flex-1 p-3 bg-gray-50">
+                                    <div class="flex justify-between text-sm text-gray-600">
+                                        <span>Nis 2025</span>
+                                        <span>Tem 2025</span>
+                                        <span>Eki 2025</span>
+                                        <span>Oca 2026</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Tasks -->
+                            ${filteredTasks.map(task => {
+                                const position = getTaskPosition(task, startDate, endDate);
+                                return `
+                                    <div class="flex border-b border-gray-100 hover:bg-gray-50">
+                                        <div class="w-80 p-3">
+                                            <div class="font-medium text-sm">${task.title}</div>
+                                            <div class="text-xs text-gray-500">${task.responsible}</div>
+                                            <div class="text-xs text-purple-600">${categories[task.category].name}</div>
+                                        </div>
+                                        <div class="flex-1 p-3 relative">
+                                            <div class="absolute top-2 h-6 rounded ${
+                                                task.status === 'done' ? 'bg-green-500' :
+                                                task.status === 'ongoing' ? 'bg-yellow-500' :
+                                                'bg-gray-400'
+                                            }" style="left: ${position.left}; width: ${position.width}">
+                                                <div class="px-2 text-xs text-white leading-6 truncate">
+                                                    ${task.title}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // AKTİVİTELER VİEW FONKSİYONU
+        function renderActivitiesView() {
+            const today = new Date();
+            const thisWeekActivities = getThisWeekActivities();
+            const completedTasks = thisWeekActivities.filter(activity => activity.type === 'completed');
+            const startedTasks = thisWeekActivities.filter(activity => activity.type === 'started');
+            const progressTasks = thisWeekActivities.filter(activity => activity.type === 'progress');
+            
+            return `
+                <div class="space-y-6">
+                    <!-- Header -->
+                    <div class="bg-white rounded-lg shadow-lg p-6 border border-purple-200">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h2 class="text-2xl font-bold text-purple-900">Bu Hafta Aktiviteler</h2>
+                                <p class="text-sm text-purple-600 mt-1">EXCO Sunumu İçin Haftalık İlerleme Raporu</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm text-purple-600">Rapor Tarihi</p>
+                                <p class="text-lg font-semibold text-purple-900">${today.toLocaleDateString('tr-TR')}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Weekly Summary Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-6 shadow-lg">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-full bg-purple-600">
+                                    <i data-lucide="check-circle" class="h-6 w-6 text-white"></i>
+                                </div>
+                                <div class="ml-4">
+                                    <p class="text-sm font-medium text-purple-700">Tamamlanan Görevler</p>
+                                    <p class="text-3xl font-bold text-purple-900">${completedTasks.length}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-6 shadow-lg">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-full bg-purple-600">
+                                    <i data-lucide="play-circle" class="h-6 w-6 text-white"></i>
+                                </div>
+                                <div class="ml-4">
+                                    <p class="text-sm font-medium text-purple-700">Başlanan Görevler</p>
+                                    <p class="text-3xl font-bold text-purple-900">${startedTasks.length}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-lg p-6 shadow-lg">
+                            <div class="flex items-center">
+                                <div class="p-3 rounded-full bg-purple-600">
+                                    <i data-lucide="trending-up" class="h-6 w-6 text-white"></i>
+                                </div>
+                                <div class="ml-4">
+                                    <p class="text-sm font-medium text-purple-700">İlerleme Kaydeden</p>
+                                    <p class="text-3xl font-bold text-purple-900">${progressTasks.length}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Activities -->
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Completed Tasks -->
+                        <div class="bg-white rounded-lg shadow-lg border border-purple-200">
+                            <div class="p-4 border-b border-purple-200 bg-purple-50">
+                                <h3 class="text-lg font-semibold text-purple-900 flex items-center">
+                                    <i data-lucide="check-circle" class="mr-2 w-5 h-5"></i>
+                                    Tamamlanan Görevler
+                                </h3>
+                            </div>
+                            <div class="p-4 space-y-3 max-h-96 overflow-y-auto">
+                                ${completedTasks.length > 0 ? completedTasks.map(activity => `
+                                    <div class="border-l-4 border-purple-500 pl-4 py-2 bg-purple-50 rounded-r">
+                                        <h4 class="font-semibold text-purple-900">${activity.task.title}</h4>
+                                        <p class="text-sm text-purple-700">${activity.task.description}</p>
+                                        <div class="flex justify-between text-xs text-purple-600 mt-1">
+                                            <span>${activity.task.responsible}</span>
+                                            <span>${categories[activity.task.category].name}</span>
+                                        </div>
+                                    </div>
+                                `).join('') : '<p class="text-purple-500 text-center py-8">Bu hafta tamamlanan görev yok</p>'}
+                            </div>
+                        </div>
+
+                        <!-- Started Tasks -->
+                        <div class="bg-white rounded-lg shadow-lg border border-purple-200">
+                            <div class="p-4 border-b border-purple-200 bg-purple-50">
+                                <h3 class="text-lg font-semibold text-purple-900 flex items-center">
+                                    <i data-lucide="play-circle" class="mr-2 w-5 h-5"></i>
+                                    Başlanan Görevler
+                                </h3>
+                            </div>
+                            <div class="p-4 space-y-3 max-h-96 overflow-y-auto">
+                                ${startedTasks.length > 0 ? startedTasks.map(activity => `
+                                    <div class="border-l-4 border-purple-500 pl-4 py-2 bg-purple-50 rounded-r">
+                                        <h4 class="font-semibold text-purple-900">${activity.task.title}</h4>
+                                        <p class="text-sm text-purple-700">${activity.task.description}</p>
+                                        <div class="flex justify-between text-xs text-purple-600 mt-1">
+                                            <span>${activity.task.responsible}</span>
+                                            <span>${categories[activity.task.category].name}</span>
+                                        </div>
+                                    </div>
+                                `).join('') : '<p class="text-purple-500 text-center py-8">Bu hafta başlanan görev yok</p>'}
+                            </div>
+                        </div>
+
+                        <!-- Progress Tasks -->
+                        <div class="bg-white rounded-lg shadow-lg border border-purple-200">
+                            <div class="p-4 border-b border-purple-200 bg-purple-50">
+                                <h3 class="text-lg font-semibold text-purple-900 flex items-center">
+                                    <i data-lucide="trending-up" class="mr-2 w-5 h-5"></i>
+                                    İlerleme Kaydeden
+                                </h3>
+                            </div>
+                            <div class="p-4 space-y-3 max-h-96 overflow-y-auto">
+                                ${progressTasks.length > 0 ? progressTasks.map(activity => `
+                                    <div class="border-l-4 border-purple-500 pl-4 py-2 bg-purple-50 rounded-r">
+                                        <h4 class="font-semibold text-purple-900">${activity.task.title}</h4>
+                                        <p class="text-sm text-purple-700">${activity.task.description}</p>
+                                        <div class="flex justify-between text-xs text-purple-600 mt-1">
+                                            <span>${activity.task.responsible}</span>
+                                            <span>${categories[activity.task.category].name}</span>
+                                        </div>
+                                    </div>
+                                `).join('') : '<p class="text-purple-500 text-center py-8">Bu hafta ilerleme kaydeden görev yok</p>'}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Export for Presentation -->
+                    <div class="bg-white rounded-lg shadow-lg p-6 border border-purple-200">
+                        <h3 class="text-lg font-semibold text-purple-900 mb-4">EXCO Sunumu İçin Özet</h3>
+                        <div class="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                            <h4 class="font-semibold text-purple-900 mb-2">Bu Hafta Kırgızistan Projesi İlerlemesi:</h4>
+                            <ul class="space-y-1 text-sm text-purple-800">
+                                <li>• <span class="font-medium">${completedTasks.length} görev tamamlandı</span></li>
+                                <li>• <span class="font-medium">${startedTasks.length} yeni görev başlatıldı</span></li>
+                                <li>• <span class="font-medium">${progressTasks.length} görevde ilerleme kaydedildi</span></li>
+                                <li>• Toplam aktif görev sayısı: <span class="font-medium">${tasks.filter(t => t.status !== 'done').length}</span></li>
+                            </ul>
+                        </div>
+                        <button onclick="copyToClipboard()" class="mt-4 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors">
+                            <i data-lucide="copy" class="inline mr-2 w-4 h-4"></i>
+                            Panoya Kopyala
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        // YARDIMCI FONKSİYONLAR
+        function getTaskPosition(task, startDate, endDate) {
+            if (!task.startDate || !task.endDate) {
+                return { left: '0%', width: '10%' };
+            }
+            
+            const taskStart = new Date(task.startDate);
+            const taskEnd = new Date(task.endDate);
+            const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
+            const startOffset = (taskStart - startDate) / (1000 * 60 * 60 * 24);
+            const duration = (taskEnd - taskStart) / (1000 * 60 * 60 * 24);
+            
+            return {
+                left: `${Math.max(0, (startOffset / totalDays) * 100)}%`,
+                width: `${Math.max(5, (duration / totalDays) * 100)}%`
+            };
+        }
+
+        function getThisWeekActivities() {
+            const activities = [];
+            
+            // Tamamlanan görevler (done status olanlar)
+            tasks.filter(task => task.status === 'done').slice(0, 3).forEach(task => {
+                activities.push({
+                    type: 'completed',
+                    task: task,
+                    date: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000)
+                });
+            });
+
+            // Bu hafta başlayan görevler (ongoing status olanlar)
+            tasks.filter(task => task.status === 'ongoing').slice(0, 2).forEach(task => {
+                activities.push({
+                    type: 'started',
+                    task: task,
+                    date: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000)
+                });
+            });
+
+            // İlerleme kaydeden görevler
+            tasks.filter(task => task.status === 'ongoing' && task.progress > 0).forEach(task => {
+                activities.push({
+                    type: 'progress',
+                    task: task,
+                    date: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000)
+                });
+            });
+
+            return activities.sort((a, b) => b.date - a.date);
+        }
+
+        // ROADMAP ETKİLEŞİMLERİ
+        function initializeRoadmapEvents() {
+            // Drag and drop
+            document.querySelectorAll('.task-card[draggable="true"]').forEach(card => {
+                card.addEventListener('dragstart', (e) => {
+                    const taskId = parseInt(e.currentTarget.dataset.taskId);
+                    draggedTask = tasks.find(task => task.id === taskId);
+                    e.currentTarget.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                });
+
+                card.addEventListener('dragend', (e) => {
+                    e.currentTarget.classList.remove('dragging');
+                    draggedTask = null;
+                });
+            });
+
+            document.querySelectorAll('.drop-zone').forEach(zone => {
+                zone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    zone.classList.add('drag-over');
+                });
+
+                zone.addEventListener('dragleave', (e) => {
+                    zone.classList.remove('drag-over');
+                });
+
+                zone.addEventListener('drop', async (e) => {
+                    e.preventDefault();
+                    zone.classList.remove('drag-over');
+                    
+                    if (draggedTask) {
+                        const newTimePhase = zone.dataset.phase;
+                        if (draggedTask.timePhase !== newTimePhase) {
+                            try {
+                                await TaskAPI.updateTaskTimePhase(draggedTask.id, newTimePhase);
+                                // Real-time subscription otomatik güncelleyecek
+                            } catch (error) {
+                                console.error('Zaman dilimi güncellenirken hata:', error);
+                            }
+                        }
+                    }
+                });
+            });
+
+            // Status buttons
+            document.querySelectorAll('.status-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const taskId = parseInt(btn.dataset.taskId);
+                    const newStatus = btn.dataset.status;
+                    
+                    try {
+                        await TaskAPI.updateTaskStatus(taskId, newStatus);
+                        // Real-time subscription otomatik güncelleyecek
+                    } catch (error) {
+                        console.error('Durum güncellenirken hata:', error);
+                    }
+                });
+            });
+
+            // Edit buttons
+            document.querySelectorAll('.edit-task-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const taskId = parseInt(btn.dataset.taskId);
+                    const task = tasks.find(t => t.id === taskId);
+                    openTaskModal(task);
+                });
+            });
+        }
+
+        // GLOBAL FONKSİYONLAR
+        function copyToClipboard() {
+            const thisWeekActivities = getThisWeekActivities();
+            const completedTasks = thisWeekActivities.filter(activity => activity.type === 'completed');
+            const startedTasks = thisWeekActivities.filter(activity => activity.type === 'started');
+            const progressTasks = thisWeekActivities.filter(activity => activity.type === 'progress');
+            
+            const text = `Kırgızistan Projesi - Bu Hafta İlerlemesi:
+
+✅ ${completedTasks.length} görev tamamlandı
+🚀 ${startedTasks.length} yeni görev başlatıldı
+📈 ${progressTasks.length} görevde ilerleme kaydedildi
+📊 Toplam aktif görev sayısı: ${tasks.filter(t => t.status !== 'done').length}`;
+
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Metin panoya kopyalandı!');
+            }).catch(() => {
+                alert('Kopyalama işlemi başarısız. Metni manuel olarak kopyalayın.');
+            });
+        }
 </body>
 </html>
