@@ -5,6 +5,10 @@ const fs = require('fs');
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'YOUR_SUPABASE_URL';
 const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
 
+console.log('🔧 Building with configuration...');
+console.log('📊 Supabase URL:', supabaseUrl ? 'SET' : 'NOT SET');
+console.log('🔑 Supabase Key:', supabaseAnonKey ? 'SET' : 'NOT SET');
+
 // index.html'i oku
 let indexHtml = fs.readFileSync('index.html', 'utf8');
 
@@ -15,10 +19,4 @@ indexHtml = indexHtml.replace('YOUR_SUPABASE_ANON_KEY', supabaseAnonKey);
 // Güncellenmiş dosyayı yaz
 fs.writeFileSync('index.html', indexHtml);
 
-// supabase-client.js'i de güncelle
-let clientJs = fs.readFileSync('js/supabase-client.js', 'utf8');
-clientJs = clientJs.replace('https://your-project-ref.supabase.co', supabaseUrl);
-clientJs = clientJs.replace('your-anon-key', supabaseAnonKey);
-fs.writeFileSync('js/supabase-client.js', clientJs);
-
-console.log('API keys injected successfully!');
+console.log('✅ API keys injected successfully!');
