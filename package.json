@@ -4,8 +4,8 @@
   "description": "Kırgızistan Projesi Yönetim Dashboard'u",
   "main": "index.html",
   "scripts": {
-    "start": "npx http-server .",
-    "build": "echo 'No build step needed for static site'"
+    "build": "node build.js",
+    "start": "npx http-server ."
   },
   "keywords": ["project-management", "dashboard", "supabase"],
   "author": "Your Name",
